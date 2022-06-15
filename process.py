@@ -61,7 +61,7 @@ class Processer(object):
         return result
     
 
-    def __call__(self, image):
+    def get_feature(self, image):
         old_image = image.copy()
         image = np.array(image, np.float32)
         img_h, img_w, _ = np.shape(image)
@@ -80,7 +80,7 @@ class Processer(object):
         image = self.letterbox_image(image, [self.image_size[0], self.image_size[1]])
         
         with torch.no_grad():
-            # 训练时加上了rgb_mean，处理时需要减掉
+            # 训练时减去了rgb_mean，预测时也需要减掉
             image = image - np.array(self.rgb_mean, np.float32)
             # 进行维度的变换，将三个通道提到第一维
             image = image.transpose(2, 0, 1)
@@ -108,10 +108,11 @@ class Processer(object):
             # print(boxes_conf_landms.shape)
             # 进行非极大值抑制
             keep = nms(boxes_conf_landms[:,:4], boxes_conf_landms[:,4], self.nms_threshold)
-            print(keep)
+            # print(keep)
             boxes_conf_landms = boxes_conf_landms[keep]
             boxes_conf_landms = boxes_conf_landms.cpu().numpy()
-
+            #print(boxes_conf_landms.shape)
+    
             if len(boxes_conf_landms) <= 0:
                 return old_image
 
@@ -122,6 +123,10 @@ class Processer(object):
             
         boxes_conf_landms[:, :4] = boxes_conf_landms[:, :4] * scale
         boxes_conf_landms[:, 5:] = boxes_conf_landms[:, 5:] * scale_for_landmarks
+        
+        return boxes_conf_landms
+
+    def draw_feature(self, image, boxes_conf_landms):
 
         for b in boxes_conf_landms:
             text = "{:.4f}".format(b[4])
@@ -129,19 +134,30 @@ class Processer(object):
             #---------------------------------------------------#
             #   b[0]-b[3]为人脸框的坐标，b[4]为得分
             #---------------------------------------------------#
-            cv2.rectangle(old_image, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
+            cv2.rectangle(image, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
             cx = b[0]
             cy = b[1] + 12
-            cv2.putText(old_image, text, (cx, cy),
+            cv2.putText(image, text, (cx, cy),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
             #print(b[0], b[1], b[2], b[3], b[4])
             #---------------------------------------------------#
             #   b[5]-b[14]为人脸关键点的坐标
             #---------------------------------------------------#
-            cv2.circle(old_image, (b[5], b[6]), 1, (0, 0, 255), 4)
-            cv2.circle(old_image, (b[7], b[8]), 1, (0, 255, 255), 4)
-            cv2.circle(old_image, (b[9], b[10]), 1, (255, 0, 255), 4)
-            cv2.circle(old_image, (b[11], b[12]), 1, (0, 255, 0), 4)
-            cv2.circle(old_image, (b[13], b[14]), 1, (255, 0, 0), 4)
-        return old_image
+            # cv2.circle(image, (b[5], b[6]), 1, (0, 0, 255), 4)
+            # cv2.circle(image, (b[7], b[8]), 1, (0, 255, 255), 4)
+            # cv2.circle(image, (b[9], b[10]), 1, (255, 0, 255), 4)
+            # cv2.circle(image, (b[11], b[12]), 1, (0, 255, 0), 4)
+            # cv2.circle(image, (b[13], b[14]), 1, (255, 0, 0), 4)
+        return image
+
+
+    def cut_image(self, image, boxes_conf_landms):
+
+        new_images = []
+        for b in boxes_conf_landms:
+            b = list(map(int, b))
+            new_image = image[b[1]:b[3], b[0]:b[2]]
+            new_images.append(new_image)
+
+        return new_images
